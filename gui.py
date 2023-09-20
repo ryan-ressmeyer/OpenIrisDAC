@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import serial
 from dataclasses import dataclass
+import math
 
 @dataclass
 class Point:
@@ -25,6 +26,9 @@ class Point:
     
     def clip(self, minimum, maxaximum):
         return Point(min(max(self.x, minimum), maxaximum), min(max(self.y, minimum), maxaximum))
+
+    def rotate(self, angle:float):
+        return Point(self.x * math.cos(angle) - self.y * math.sin(angle), self.x * math.sin(angle) + self.y * math.cos(angle))
 
 @dataclass
 class EyeData:
@@ -70,28 +74,59 @@ class EyesData:
             self.right = EyeData()
             self.error = 'No data'
 
-
+@dataclass
+class CalibrationParameters:
+    x_bias: float
+    y_bias: float
+    x_gain: float
+    y_gain: float
+    rotation: float
+    
+    def transform(self, pos:Point):
+        return ((pos + Point(self.x_bias, self.y_bias)) * Point(self.x_gain, self.y_gain)).rotate(self.rotation * math.pi / 180)
 
 class GUI:
     def __init__(self):
-        self.x_bias = 10
-        self.y_bias = 50
-        self.x_gain = 20
-        self.y_gain = 20
-        self.rotation = 0
+        self.left_cal = CalibrationParameters(10,50,.02,-.02,0)
+        self.right_cal = CalibrationParameters(10,50,.02,-.02,0)
         self.method = 'dpi'
         self.eye = 'Left'
-        c1 = sg.Column([[sg.Text('X Bias')], [sg.Slider((-300,300), default_value=self.x_bias, s=(30, 20), resolution=1, k='x bias', enable_events=True)]])
-        c2 = sg.Column([[sg.Text('Y Bias')], [sg.Slider((-300,300), default_value=self.y_bias, s=(30, 20), resolution=1, k='y bias', enable_events=True)]])
-        c3 = sg.Column([[sg.Text('X Gain')], [sg.Slider((0,500), default_value=self.x_gain, s=(30, 20), resolution=1, k='x gain', enable_events=True)], [sg.Checkbox('flip x', k='flip x', enable_events=True)]])
-        c4 = sg.Column([[sg.Text('Y Gain')], [sg.Slider((0,500), default_value=self.y_gain, s=(30, 20), resolution=1, k='y gain', enable_events=True)], [sg.Checkbox('flip y', k='flip y', enable_events=True)]])
-        c5 = sg.Column([[sg.Text('Rotation')], [sg.Slider((-180,180), default_value=self.rotation, s=(30, 20), resolution=1, k='rotation', enable_events=True)]])
+        c1 = sg.Column([
+            [sg.Text('X Bias')], 
+            [sg.Slider((-300,300), default_value=self.cal.x_bias, s=(30, 20), resolution=1, k='x bias', enable_events=True)]
+            ])
+        c2 = sg.Column([
+            [sg.Text('Y Bias')], 
+            [sg.Slider((-300,300), default_value=self.cal.y_bias, s=(30, 20), resolution=1, k='y bias', enable_events=True)]
+            ])
+        c3 = sg.Column([
+            [sg.Text('X Gain')], 
+            [sg.Slider((0,500), default_value=int(abs(self.cal.x_gain)*1000), s=(30, 20), resolution=1, k='x gain', enable_events=True)], 
+            [sg.Checkbox('flip x', k='flip x', enable_events=True, default=self.cal.x_gain < 0)]
+            ])
+        c4 = sg.Column([
+            [sg.Text('Y Gain')], 
+            [sg.Slider((0,500), default_value=int(abs(self.cal.y_gain)*1000), s=(30, 20), resolution=1, k='y gain', enable_events=True)], 
+            [sg.Checkbox('flip y', k='flip y', enable_events=True, default=self.cal.y_gain < 0)]
+            ])
+        c5 = sg.Column([
+            [sg.Text('Rotation')], 
+            [sg.Slider((-180,180), default_value=self.cal.rotation, s=(30, 20), resolution=1, k='rotation', enable_events=True)]
+            ])
         self.graph = sg.Graph(canvas_size=(400,400), graph_bottom_left=(-5,-5), graph_top_right=(5,5), background_color='grey', key='graph')
         graph_col = sg.Column([
             [sg.Text('', key='error', size=(20,1), text_color='red')],
             [self.graph],
-            [sg.Text('Method: '), sg.Radio('P1-P4', 'method', key='dpi', default=self.method=='dpi'), sg.Radio('P1-Pupil', 'method', key='pcr', default=self.method=='pcr')],
-            [sg.Text('Eye: '), sg.Radio('Left', 'eye', key='Left', default=self.eye=='Left'), sg.Radio('Right', 'eye', key='Right', default=self.eye=='Right')]
+            [
+                sg.Text('Method: '), 
+                sg.Radio('P1-P4', 'method', key='dpi', default=self.method=='dpi', enable_events=True), 
+                sg.Radio('P1-Pupil', 'method', key='pcr', default=self.method=='pcr', enable_events=True)
+            ],
+            [
+                sg.Text('Eye: '), 
+                sg.Radio('Left', 'eye', key='Left', default=self.eye=='Left', enable_events=True), 
+                sg.Radio('Right', 'eye', key='Right', default=self.eye=='Right', enable_events=True)
+            ]
             ])
         self.layout = [
             [c1, c2, c3, c4, c5, graph_col]
@@ -103,6 +138,15 @@ class GUI:
             print('Connected to USB serial')
         else:
             self.usb_ser = None
+
+    @property
+    def cal(self):
+        if self.eye == 'Left':
+            return self.left_cal
+        elif self.eye == 'Right':
+            return self.right_cal
+        else:
+            raise Exception('Invalid eye')
 
     def get_eyedata(self, client:OpenIrisClient):
         data = client.receive_data()
@@ -120,26 +164,24 @@ class GUI:
             for cmd in commands:
                 try:
                     if len(cmd) > 2 and cmd[:2] == 'bx':
-                        self.x_bias = float(cmd[2:])
-                        self.window['x bias'].update(value = self.x_bias)
+                        self.cal.x_bias = float(cmd[2:])
                     elif len(cmd) > 2 and cmd[:2] == 'by':
-                        self.y_bias = float(cmd[2:])
-                        self.window['y bias'].update(value = self.y_bias)
+                        self.cal.y_bias = float(cmd[2:])
                     elif len(cmd) > 2 and cmd[:2] == 'gx':
-                        self.x_gain = float(cmd[2:])
-                        self.window['x gain'].update(value = int(abs(self.x_gain)*1000))
-                        self.window['flip x'].update(value = self.x_gain < 0)
+                        self.cal.x_gain = float(cmd[2:])
                     elif len(cmd) > 2 and cmd[:2] == 'gy':
-                        self.y_gain = float(cmd[2:])
-                        self.window['y gain'].update(value = int(abs(self.y_gain)*1000))
-                        self.window['flip y'].update(value = self.y_gain < 0)
+                        self.cal.y_gain = float(cmd[2:])
                     elif len(cmd) > 2 and cmd[0] == 'r':
-                        self.rotation = float(cmd[1:])
-                        self.window['rotation'].update(value = self.rotation)
-                    self.window.refresh()
-                    time.sleep(0.01)
+                        self.cal.rotation = float(cmd[1:])
+                    self.update_sliders()
                 except Exception as e:
                     print(e)
+    
+    def send_cal_to_usb(self):
+        if self.usb_ser is not None:
+            msg = f'bx{self.cal.x_bias},by{self.cal.y_bias},gx{self.cal.x_gain*1000},gy{self.cal.y_gain*1000},r{self.cal.rotation}'
+            print(f'Sending: {msg}')
+            print(self.usb_ser.write(msg.encode()))
 
     def update_graph(self, x, y):
         self.graph.erase()
@@ -153,12 +195,24 @@ class GUI:
         self.graph.draw_point((x,y), size=.15, color='red')
 
     
-    def window_loop(self, verbose=False):
+    def update_sliders(self):
+        self.window['x bias'].update(value = self.cal.x_bias)
+        self.window['y bias'].update(value = self.cal.y_bias)
+        self.window['x gain'].update(value = int(abs(self.cal.x_gain)*1000))
+        self.window['y gain'].update(value = int(abs(self.cal.y_gain)*1000))
+        self.window['flip x'].update(value = self.cal.x_gain < 0)
+        self.window['flip y'].update(value = self.cal.y_gain < 0)
+        self.window['rotation'].update(value = self.cal.rotation)
+        self.window.refresh()
+        time.sleep(0.01)
 
-        with DAC() as dac, OpenIrisClient() as client:
+    def window_loop(self, open_iris_ip='localhost', verbose=False):
+
+        with DAC() as dac, OpenIrisClient(server_address=open_iris_ip) as client:
             dac.set_simultaneous_mode()
 
             self.window = sg.Window('OpenIrisClient', self.layout)
+            out = None
             while True:
                 event, values = self.window.read(timeout=10) # 10ms ~= 100Hz
                 if verbose:
@@ -167,6 +221,35 @@ class GUI:
                 if event == sg.WIN_CLOSED or event == 'Close':
                     break
                 
+                if event in ['Left', 'Right']:
+                    # Update eye
+                    if values['Left']:
+                        self.eye = 'Left'
+                    elif values['Right']:
+                        self.eye = 'Right'
+                    else:
+                        self.eye = 'Left'
+                    self.send_cal_to_usb()
+                    self.update_sliders()
+
+                if event in ['dpi', 'pcr']:
+                    # Update method
+                    if values['dpi']:
+                        self.method = 'dpi'
+                    elif values['pcr']:
+                        self.method = 'pcr'
+                    else:
+                        self.method = 'dpi'
+
+                if event in ['x bias', 'y bias', 'x gain', 'y gain', 'flip x', 'flip y', 'rotation']:
+                    # Update calibration
+                    self.cal.x_bias = values["x bias"]
+                    self.cal.y_bias = values["y bias"]
+                    self.cal.x_gain = values["x gain"]/1000 * (-1 if values['flip x'] else 1)
+                    self.cal.y_gain = values["y gain"]/1000 * (-1 if values['flip y'] else 1)
+                    self.cal.rotation = values["rotation"]
+                    # self.send_cal_to_usb() This would be ideal, but toFloat() is too slow in Arduino
+
                 if event == sg.TIMEOUT_EVENT:
                     # Check usb serial
                     self.check_usb()
@@ -176,46 +259,26 @@ class GUI:
                     eye_data = ed.left if self.eye == 'Left' else ed.right
                     if ed.error:
                         self.window['error'].update(value = ed.error, text_color='red')
-                        out = Point(-5,-5)
+                        out = Point(-5,-5) if out is None else out
                     elif self.method == 'dpi':
                         if eye_data.cr_error or eye_data.p4_error:
                             self.window['error'].update(value = eye_data.cr_error + ' ' + eye_data.p4_error, text_color='red')
-                            out = Point(-5,-5)  
+                            out = Point(-5,-5) if out is None else out
                         else:  
                             self.window['error'].update(value = 'Tracking', text_color='lawn green')
-                            out = (eye_data.cr - eye_data.p4 + Point(self.x_bias, self.y_bias)) * Point(self.x_gain, self.y_gain)
+                            out = self.cal.transform(eye_data.cr - eye_data.p4)
                     elif self.method == 'pcr':
                         if eye_data.cr_error:
                             self.window['error'].update(value = eye_data.cr_error, text_color='red')
-                            out = Point(-5,-5)
+                            out = Point(-5,-5) if out is None else out
                         else:
                             self.window['error'].update(value = 'Tracking', text_color='lawn green')
-                            out = (eye_data.pupil - eye_data.cr + Point(self.x_bias, self.y_bias)) * Point(self.x_gain, self.y_gain)
+                            out = self.cal.transform(eye_data.pupil - eye_data.cr)
                     out = out.clip(-5,5)
                     self.update_graph(out.x, out.y)
                     dac.write_channel_voltage(0, out.x)
                     dac.write_channel_voltage(1, out.y)
                     dac.update_outputs()
-
-                if values['dpi']:
-                    self.method = 'dpi'
-                elif values['pcr']:
-                    self.method = 'pcr'
-                else:
-                    self.method = 'dpi'
-
-                if values['Left']:
-                    self.eye = 'Left'
-                elif values['Right']:
-                    self.eye = 'Right'
-                else:
-                    self.eye = 'Left'
-
-                self.x_bias = values["x bias"]
-                self.y_bias = values["y bias"]
-                self.x_gain = values["x gain"]/1000 * (-1 if values['flip x'] else 1)
-                self.y_gain = values["y gain"]/1000 * (-1 if values['flip y'] else 1)
-                self.rotation = values["rotation"]
 
     def __enter__(self):
         return self
@@ -229,4 +292,4 @@ class GUI:
 
 if __name__ == "__main__":
     with GUI() as gui:
-        gui.window_loop(verbose=False)
+        gui.window_loop(open_iris_ip='192.168.1.3', verbose=False)

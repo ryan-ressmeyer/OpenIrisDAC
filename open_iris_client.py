@@ -3,7 +3,7 @@ import time
 import json
 
 class OpenIrisClient:
-    def __init__(self, server_address='10.155.205.178', port=9003):
+    def __init__(self, server_address='localhost', port=9003):
         self.server_address = (server_address, port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(.05) # 200 Hz
@@ -14,7 +14,7 @@ class OpenIrisClient:
             data = self.sock.recvfrom(8192)  # Adjust the buffer size as needed
             return json.loads(data[0].decode("utf-8"))
         except Exception as e:
-            print(f"Error receiving data: {e}")
+            #print(f"Error receiving data: {e}")
             return None
     
     def __enter__(self):
