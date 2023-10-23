@@ -1,7 +1,10 @@
 from ctypes import *
 import os
+from pathlib import Path
 
-apci_lib = CDLL("APCI/apcilib/apcilib.so")
+file_path = os.path.dirname(os.path.realpath(__file__))
+
+apci_lib = CDLL(Path(file_path) / "APCI/apcilib/apcilib.so")
 
 class DAC(object):
     """

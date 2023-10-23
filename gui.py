@@ -87,8 +87,8 @@ class CalibrationParameters:
 
 class GUI:
     def __init__(self):
-        self.left_cal = CalibrationParameters(10,50,.02,-.02,0)
-        self.right_cal = CalibrationParameters(10,50,.02,-.02,0)
+        self.left_cal = CalibrationParameters(-60,180,-.013,.013,0)
+        self.right_cal = CalibrationParameters(80,180,-.013,.013,0)
         self.method = 'dpi'
         self.eye = 'Left'
         c1 = sg.Column([
@@ -124,8 +124,8 @@ class GUI:
             ],
             [
                 sg.Text('Eye: '), 
+                sg.Radio('Right', 'eye', key='Right', default=self.eye=='Right', enable_events=True),
                 sg.Radio('Left', 'eye', key='Left', default=self.eye=='Left', enable_events=True), 
-                sg.Radio('Right', 'eye', key='Right', default=self.eye=='Right', enable_events=True)
             ]
             ])
         self.layout = [
@@ -292,4 +292,4 @@ class GUI:
 
 if __name__ == "__main__":
     with GUI() as gui:
-        gui.window_loop(open_iris_ip='192.168.1.3', verbose=False)
+        gui.window_loop(open_iris_ip='192.168.1.2', verbose=False)
