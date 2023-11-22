@@ -111,7 +111,7 @@ class GUI:
             self.right_cal.load(self.right_cal_fname)
         else:
             self.right_cal = CalibrationParameters(80,180,-.013,.013,0) 
-            
+
         self.method = 'dpi'
         self.eye = 'Left'
         c1 = sg.Column([
@@ -287,6 +287,9 @@ class GUI:
         #     self.usb_ser.close()
         if self.window:
             self.window.close()
+
+        self.left_cal.save(self.left_cal_fname)
+        self.right_cal.save(self.right_cal_fname)
     
 
 if __name__ == "__main__":
