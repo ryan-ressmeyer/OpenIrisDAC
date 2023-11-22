@@ -86,11 +86,32 @@ class CalibrationParameters:
     
     def transform(self, pos:Point):
         return ((pos + Point(self.x_bias, self.y_bias)) * Point(self.x_gain, self.y_gain)).rotate(self.rotation * math.pi / 180)
+    
+    def save(self, fname:Path):
+        with open(fname, 'w') as f:
+            f.write(f'{self.x_bias},{self.y_bias},{self.x_gain},{self.y_gain},{self.rotation}')
+    
+    def load(self, fname:Path):
+        with open(fname, 'r') as f:
+            self.x_bias, self.y_bias, self.x_gain, self.y_gain, self.rotation = [float(x) for x in f.read().split(',')]
 
 class GUI:
     def __init__(self):
-        self.left_cal = CalibrationParameters(-60,180,-.013,.013,0)
-        self.right_cal = CalibrationParameters(80,180,-.013,.013,0)
+        self.save_dir = Path(__file__).parent
+        self.left_cal_fname = self.save_dir / 'left_cal.txt'
+        self.right_cal_fname = self.save_dir / 'right_cal.txt'
+        if self.left_cal_fname.exists():
+            self.left_cal = CalibrationParameters(0,0,1,1,0)
+            self.left_cal.load(self.left_cal_fname)
+        else:
+            self.left_cal = CalibrationParameters(-60,180,-.013,.013,0)
+        
+        if self.right_cal_fname.exists():
+            self.right_cal = CalibrationParameters(0,0,1,1,0)
+            self.right_cal.load(self.right_cal_fname)
+        else:
+            self.right_cal = CalibrationParameters(80,180,-.013,.013,0) 
+            
         self.method = 'dpi'
         self.eye = 'Left'
         c1 = sg.Column([
