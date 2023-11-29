@@ -199,18 +199,21 @@ class GUI:
     def window_loop(self, open_iris_ip='localhost', verbose=False):
         system = nidaqmx.system.System.local()
         devs = [device for device in system.devices]
-        assert len(devs), 'Could not find NI-DAQ device. Is it connected?'
-        dev = devs[0]
-        print(f'Using device: {dev}')
+        assert len(devs) == 2, 'Could not find 2 NI-DAQ devices. Are they connected?'
+        dev1 = devs[0]
+        dev2 = devs[1]
+        print(f'Using devices: {dev1}, {dev2}')
 
         with OpenIrisClient(server_address=open_iris_ip) as client, nidaqmx.Task() as ao_task:
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao0", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao1", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
+            ao_task.ao_channels.add_ao_voltage_chan(dev1.name + "/ao0", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
+            ao_task.ao_channels.add_ao_voltage_chan(dev1.name + "/ao1", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
+            ao_task.ao_channels.add_ao_voltage_chan(dev2.name + "/ao0", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
+            ao_task.ao_channels.add_ao_voltage_chan(dev2.name + "/ao1", name_to_assign_to_channel='', min_val=0.0, max_val=5.0)
     
             writer = nidaqmx.stream_writers.AnalogMultiChannelWriter(
                 ao_task.out_stream, auto_start=True)
 
-            out_arr = np.zeros(2)
+            out_arr = np.zeros(4)
 
             self.window = sg.Window('OpenIrisClient', self.layout)
             out = None

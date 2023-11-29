@@ -86,11 +86,32 @@ class CalibrationParameters:
     
     def transform(self, pos:Point):
         return ((pos + Point(self.x_bias, self.y_bias)) * Point(self.x_gain, self.y_gain)).rotate(self.rotation * math.pi / 180)
+    
+    def save(self, fname:Path):
+        with open(fname, 'w') as f:
+            f.write(f'{self.x_bias},{self.y_bias},{self.x_gain},{self.y_gain},{self.rotation}')
+    
+    def load(self, fname:Path):
+        with open(fname, 'r') as f:
+            self.x_bias, self.y_bias, self.x_gain, self.y_gain, self.rotation = [float(x) for x in f.read().split(',')]
 
 class GUI:
     def __init__(self):
-        self.left_cal = CalibrationParameters(-60,-180,-.013,-.013,0)
-        self.right_cal = CalibrationParameters(80,-180,-.013,-.013,0)
+        self.save_dir = Path(__file__).parent
+        self.left_cal_fname = self.save_dir / 'left_cal.txt'
+        self.right_cal_fname = self.save_dir / 'right_cal.txt'
+        if self.left_cal_fname.exists():
+            self.left_cal = CalibrationParameters(0,0,1,1,0)
+            self.left_cal.load(self.left_cal_fname)
+        else:
+            self.left_cal = CalibrationParameters(-60,180,-.013,.013,0)
+        
+        if self.right_cal_fname.exists():
+            self.right_cal = CalibrationParameters(0,0,1,1,0)
+            self.right_cal.load(self.right_cal_fname)
+        else:
+            self.right_cal = CalibrationParameters(80,180,-.013,.013,0) 
+
         self.method = 'dpi'
         self.eye = 'Left'
         c1 = sg.Column([
@@ -115,7 +136,7 @@ class GUI:
             [sg.Text('Rotation')], 
             [sg.Slider((-180,180), default_value=self.cal.rotation, s=(30, 20), resolution=1, k='rotation', enable_events=True)]
             ])
-        self.graph = sg.Graph(canvas_size=(400,400), graph_bottom_left=(-5,-5), graph_top_right=(5,5), background_color='grey', key='graph')
+        self.graph = sg.Graph(canvas_size=(400,400), graph_bottom_left=(0,0), graph_top_right=(5,5), background_color='grey', key='graph')
         graph_col = sg.Column([
             [sg.Text('', key='error', size=(20,1), text_color='red')],
             [self.graph],
@@ -155,14 +176,14 @@ class GUI:
     def update_graph(self, out:np.ndarray):
         self.graph.erase()
         # draw axes
-        self.graph.draw_line((-5,0), (5,0))
-        self.graph.draw_line((0,-5), (0,5))
-        for xy in range(-5, 6):
+        self.graph.draw_line((0,0), (5,0))
+        self.graph.draw_line((0,0), (0,5))
+        for xy in range(0, 6):
             self.graph.draw_line((xy,-0.1), (xy,0.1))
             self.graph.draw_line((-0.1,xy), (0.1,xy))
 
         self.graph.draw_point((out[0], out[1]), size=.15, color='red')
-        self.graph.draw_point((out[3], out[4]), size=.15, color='green')
+        self.graph.draw_point((out[2], out[3]), size=.15, color='green')
 
     
     def update_sliders(self):
@@ -179,25 +200,25 @@ class GUI:
     def window_loop(self, open_iris_ip='localhost', verbose=False):
         system = nidaqmx.system.System.local()
         devs = [device for device in system.devices]
-        assert len(devs), 'Could not find NI-DAQ device. Is it connected?'
-        dev = devs[0]
-        print(f'Using device: {dev}')
+        assert len(devs) == 2, f'Found {len(devs)} NI-DAQ devices, but exactly 2 are required. Are they connected?'
+        dev1 = devs[0]
+        dev2 = devs[1]
+        print(f'Using device: {dev1}, {dev2}')
 
-        with OpenIrisClient(server_address=open_iris_ip) as client, nidaqmx.Task() as ao_task:
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao0", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao1", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao2", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao3", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao4", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
-            ao_task.ao_channels.add_ao_voltage_chan(dev.name + "/ao5", name_to_assign_to_channel='', min_val=-5.0, max_val=5.0)
+        with OpenIrisClient(server_address=open_iris_ip) as client, nidaqmx.Task() as ao_task1, nidaqmx.Task() as ao_task2:
+            ao_task1.ao_channels.add_ao_voltage_chan(dev1.name + "/ao0", name_to_assign_to_channel='', min_val=0, max_val=5.0)
+            ao_task1.ao_channels.add_ao_voltage_chan(dev1.name + "/ao1", name_to_assign_to_channel='', min_val=0, max_val=5.0)
+            ao_task2.ao_channels.add_ao_voltage_chan(dev2.name + "/ao0", name_to_assign_to_channel='', min_val=0, max_val=5.0)
+            ao_task2.ao_channels.add_ao_voltage_chan(dev2.name + "/ao1", name_to_assign_to_channel='', min_val=0, max_val=5.0)
     
-            writer = nidaqmx.stream_writers.AnalogMultiChannelWriter(
-                ao_task.out_stream, auto_start=True)
+            writer1 = nidaqmx.stream_writers.AnalogMultiChannelWriter(
+                ao_task1.out_stream, auto_start=True)
+            writer2 = nidaqmx.stream_writers.AnalogMultiChannelWriter(
+                ao_task2.out_stream, auto_start=True)
 
-            out_arr = np.ones(6)*-5
+            out_arr = np.zeros(4)
 
-            self.window = sg.Window('OpenIrisClient', self.layout)
-            out = None
+            self.window = sg.Window('OpenIrisDAC', self.layout)
             while True:
                 event, values = self.window.read(timeout=10) # 10ms ~= 100Hz
                 if verbose:
@@ -239,37 +260,52 @@ class GUI:
 
                     # Get eye data
                     ed = self.get_eyedata(client)
-                    eye_data = ed.left if self.eye == 'Left' else ed.right
                     if ed.error:
                         self.window['error'].update(value = ed.error, text_color='red')
                     elif self.method == 'dpi':
-                        if eye_data.cr_error or eye_data.p4_error:
-                            self.window['error'].update(value = eye_data.cr_error + ' ' + eye_data.p4_error, text_color='red')
+                        if ed.left.cr_error or ed.left.p4_error or ed.right.cr_error or ed.right.p4_error:
+                            error_txt = ''
+                            if ed.left.cr_error:
+                                error_txt += 'Left: ' + ed.left.cr_error + ', '
+                            if ed.left.p4_error:
+                                error_txt += 'Left: ' + ed.left.p4_error + ', '
+                            if ed.right.cr_error:
+                                error_txt += 'Right: ' + ed.right.cr_error + ', '
+                            if ed.right.p4_error:
+                                error_txt += 'Right: ' + ed.right.p4_error + ', '
+                            self.window['error'].update(value = error_txt, text_color='red')
                         else:  
                             self.window['error'].update(value = 'Tracking', text_color='lawn green')
                             l_out = self.left_cal.transform(ed.left.cr - ed.left.p4)
                             r_out = self.right_cal.transform(ed.right.cr - ed.right.p4)
-                            out_arr = np.array([l_out.x, l_out.y, 0, r_out.x, r_out.y,0])
+                            out_arr = np.array([l_out.x, l_out.y, r_out.x, r_out.y])
                     elif self.method == 'pcr':
-                        if eye_data.cr_error:
-                            self.window['error'].update(value = eye_data.cr_error, text_color='red')
+                        if ed.left.cr_error or ed.right.cr_error:
+                            error_txt = ''
+                            if ed.left.cr_error:
+                                error_txt += 'Left: ' +  ed.left.cr_error + ', '
+                            if ed.right.cr_error:
+                                error_txt += 'Right: ' +  ed.right.cr_error + ', '
+                            self.window['error'].update(value = error_txt, text_color='red')
                         else:
                             self.window['error'].update(value = 'Tracking', text_color='lawn green')
                             l_out = self.left_cal.transform(ed.left.cr - ed.left.p4)
                             r_out = self.right_cal.transform(ed.right.cr - ed.right.p4)
-                            out_arr = np.array([l_out.x, l_out.y, 0, r_out.x, r_out.y,0])
-                    out_arr = np.clip(out_arr)
+                            out_arr = np.array([l_out.x, l_out.y, r_out.x, r_out.y])
+                    out_arr = np.clip(out_arr, 0, 5)
                     self.update_graph(out_arr)
-                    writer.write_one_sample(out_arr)
+                    writer1.write_one_sample(out_arr[0:2])
+                    writer2.write_one_sample(out_arr[2:4])
 
     def __enter__(self):
         return self
     
-    def __exit__(self, exc_type, exc_value, traceback):
-        # if self.usb_ser is not None:
-        #     self.usb_ser.close()
-        if self.window:
+    def __exit__(self, exc_type, exc_value, traceback):        
+        if hasattr(self, 'window') and self.window:
             self.window.close()
+
+        self.left_cal.save(self.left_cal_fname)
+        self.right_cal.save(self.right_cal_fname)
     
 
 if __name__ == "__main__":
