@@ -203,19 +203,19 @@ class GUI:
             [self.graph],
             [sg.Text('Channels: '),],
             [sg.Button(' ', disabled=True, button_color='DodgerBlue'), 
-             sg.Text('Left X: '), sg.Combo(self.output_list, default_value=self.output_list[1] if len(self.output_list) >= 1 else 'None', 
+             sg.Text('Left X: '), sg.Combo(self.output_list, default_value=self.output_list[1] if len(self.output_list) > 1 else 'NONE', 
                                            key='left_x_channel', enable_events=True),
-             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[2] if len(self.output_list) >= 2 else 'None', 
+             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[2] if len(self.output_list) > 2 else 'NONE', 
                                             key='left_y_channel', enable_events=True)],
             [sg.Button(' ', disabled=True, button_color='firebrick1'), 
-             sg.Text('Right X: '), sg.Combo(self.output_list, default_value=self.output_list[3] if len(self.output_list) >= 3 else 'None', 
+             sg.Text('Right X: '), sg.Combo(self.output_list, default_value=self.output_list[3] if len(self.output_list) > 3 else 'NONE', 
                                             key='right_x_channel', enable_events=True),
-             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[4] if len(self.output_list) >= 4 else 'None', 
+             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[4] if len(self.output_list) > 4 else 'NONE', 
                                             key='right_y_channel', enable_events=True)],
             [sg.Button(' ', disabled=True, button_color='DarkGoldenrod1'), 
-             sg.Text('Pupil Left: '), sg.Combo(self.output_list, default_value=self.output_list[5] if len(self.output_list) >= 5 else 'None', 
+             sg.Text('Pupil Left: '), sg.Combo(self.output_list, default_value=self.output_list[5] if len(self.output_list) > 5 else 'NONE', 
                                             key='pupil_x_channel', enable_events=True),
-             sg.Text(' Right: '), sg.Combo(self.output_list, default_value=self.output_list[6] if len(self.output_list) >= 6 else 'None', 
+             sg.Text(' Right: '), sg.Combo(self.output_list, default_value=self.output_list[6] if len(self.output_list) > 6 else 'NONE', 
                                             key='pupil_y_channel', enable_events=True)],
             [sg.Button('Switch Left/Right', key='switch', enable_events=True)]
             ])
@@ -251,7 +251,7 @@ class GUI:
         
         self.window = sg.Window('OpenIrisClient', self.layout)
         first = True
-        while True:
+        while self.state.is_running:
             event, values = self.window.read(timeout=20) # 20ms = 50Hz
             if first:
                 self.update_output_channels()
@@ -358,8 +358,7 @@ class GUI:
 
     def run(self, verbose=False):
         with self as gui:
-            while self.state.is_running:
-                gui.window_loop(verbose)
+            gui.window_loop(verbose)
 
 class DataPipeline:
     def __init__(self, state:GlobalState, server_address='localhost', port=9003):
@@ -370,7 +369,7 @@ class DataPipeline:
     def run(self, debug=False):
         with OpenIrisClient(self.server_address, self.port) as client:
             while self.state.is_running:
-                data = client.fetch_next_data(True)
+                data = client.fetch_next_data(debug)
                 self.state.last_eyes_data = data
 
                 left_output = data.left.cr - (data.left.pupil if self.state.left_method == 'pcr' else data.left.p4)
