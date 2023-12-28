@@ -7,17 +7,6 @@ from dataclasses import dataclass
 import math
 import AIOUSB as ao
 
-
-def write_channel_voltage(index, channel:int, voltage:float, v_max=5):
-    """
-    Writes a voltage to a channel. The voltage is clamped to the range [-v_max, v_max].
-    """
-    v_out = voltage if voltage < v_max else v_max
-    v_out = v_out if v_out > -v_max else -v_max
-
-    short_out = int((v_out + v_max) / v_max / 2 * 65536)
-    ao.DACDirect(index, channel, short_out)
-
 @dataclass
 class Point:
     x: float
