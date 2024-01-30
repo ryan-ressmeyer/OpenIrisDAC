@@ -292,7 +292,7 @@ class GUI:
         
         self.window = sg.Window('OpenIrisClient', self.layout)
         first = True
-        while True:
+        while self.state.is_running:
             event, values = self.window.read(timeout=20) # 20ms = 50Hz
             if first:
                 self.update_output_channels()
@@ -434,8 +434,7 @@ class GUI:
 
     def run(self, verbose=False):
         with self as gui:
-            while self.state.is_running:
-                gui.window_loop(verbose)
+            gui.window_loop(verbose)
 
 class DataPipeline:
     def __init__(self, state:GlobalState, server_address='localhost', port=9003):
@@ -446,7 +445,7 @@ class DataPipeline:
     def run(self, debug=False):
         with OpenIrisClient(self.server_address, self.port) as client:
             while self.state.is_running:
-                data = client.fetch_next_data(True)
+                data = client.fetch_next_data(debug)
                 self.state.last_eyes_data = data
 
                 left_output = data.left.cr - (data.left.pupil if self.state.left_method == 'pcr' else data.left.p4)
