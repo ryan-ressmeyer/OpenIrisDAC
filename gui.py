@@ -68,7 +68,11 @@ class AnalogOutputPair:
 class GlobalState:
     def __init__(self, save_dir:Path = None) -> None:
         if save_dir is None:
-            save_dir = Path(__file__).parent / 'state'
+            cals_dir = Path(__file__).parent / 'cals'
+            if not cals_dir.exists():
+                cals_dir.mkdir()
+            save_dir = Path(__file__).parent / 'cals' / '.state'
+
         self.save_dir = save_dir
         if not self.save_dir.exists():
             self.save_dir.mkdir()
@@ -106,30 +110,37 @@ class GlobalState:
 
         print(f"Found {len(self.output_dict)} Output Channels: {self.output_dict.keys()}")
 
-    def save(self):
-        if not self.save_dir.exists():
-            dir.mkdir()
+    def save(self, path:Path = None):
+        if path is None:
+            path = self.save_dir
+
+        if not path.exists():
+            path.mkdir()
         # save calibrations
-        self.left_cal.save(self.save_dir / 'left_cal.txt')
-        self.right_cal.save(self.save_dir / 'right_cal.txt')
-        self.pupil_cal.save(self.save_dir / 'pupil_cal.txt')
+        self.left_cal.save(path / 'left_cal.txt')
+        self.right_cal.save(path / 'right_cal.txt')
+        self.pupil_cal.save(path / 'pupil_cal.txt')
         # save methods
-        with open(self.save_dir / 'methods.txt', 'w') as f:
+        with open(path / 'methods.txt', 'w') as f:
             f.write(f'{self.left_method},{self.right_method}')
     
-    def load(self):
-        if not self.save_dir.exists():
+    def load(self, path:Path = None):
+        if path is None:
+            path = self.save_dir
+
+        if not path.exists():
+            print('No save directory found.')
             return
         # load calibrations
         try:
-            self.left_cal.load(self.save_dir / 'left_cal.txt')
-            self.right_cal.load(self.save_dir / 'right_cal.txt')
-            self.pupil_cal.load(self.save_dir / 'pupil_cal.txt')
+            self.left_cal.load(path / 'left_cal.txt')
+            self.right_cal.load(path / 'right_cal.txt')
+            self.pupil_cal.load(path / 'pupil_cal.txt')
         except:
             print('Error loading calibration files.')
         # load methods
         try:
-            with open(self.save_dir / 'methods.txt', 'r') as f:
+            with open(path / 'methods.txt', 'r') as f:
                 self.left_method, self.right_method = f.read().split(',')
             if self.left_method not in ['dpi', 'pcr']:
                 self.left_method = 'dpi'
@@ -142,6 +153,9 @@ class GlobalState:
 class GUI:
     def __init__(self, state:GlobalState) -> None:
         self.state = state
+
+        menu_def = [['File', ['Save Config', 'Load Config', 'Exit']]]
+
 
         def make_column(title, key, size, resolution, default_value, minimum, maximum, append=[]):
             return sg.Column([
@@ -197,39 +211,66 @@ class GUI:
         
 
         self.output_list = list(self.state.output_dict.keys())
-        self.output_list.insert(0, 'NONE')
+        self.output_list.insert(0, 'None')
         graph_col = sg.Column([
             [sg.Text('', key='error', size=(20,1), text_color='red')],
             [self.graph],
             [sg.Text('Channels: '),],
-            [sg.Button(' ', disabled=True, button_color='DodgerBlue'), 
-             sg.Text('Left X: '), sg.Combo(self.output_list, default_value=self.output_list[1] if len(self.output_list) >= 1 else 'None', 
+            [sg.Button(' Zero ', key='left_zero', enable_events=True, button_color='DodgerBlue'), 
+             sg.Text('Left X: '), sg.Combo(self.output_list, default_value=self.output_list[1] if len(self.output_list) > 1 else 'None', 
                                            key='left_x_channel', enable_events=True),
-             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[2] if len(self.output_list) >= 2 else 'None', 
+             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[2] if len(self.output_list) > 2 else 'None', 
                                             key='left_y_channel', enable_events=True)],
-            [sg.Button(' ', disabled=True, button_color='firebrick1'), 
-             sg.Text('Right X: '), sg.Combo(self.output_list, default_value=self.output_list[3] if len(self.output_list) >= 3 else 'None', 
+            [sg.Button(' Zero ', key='right_zero', enable_events=True, button_color='firebrick1'), 
+             sg.Text('Right X: '), sg.Combo(self.output_list, default_value=self.output_list[3] if len(self.output_list) > 3 else 'None', 
                                             key='right_x_channel', enable_events=True),
-             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[4] if len(self.output_list) >= 4 else 'None', 
+             sg.Text(' Y: '), sg.Combo(self.output_list, default_value=self.output_list[4] if len(self.output_list) > 4 else 'None', 
                                             key='right_y_channel', enable_events=True)],
             [sg.Button(' ', disabled=True, button_color='DarkGoldenrod1'), 
-             sg.Text('Pupil Left: '), sg.Combo(self.output_list, default_value=self.output_list[5] if len(self.output_list) >= 5 else 'None', 
+             sg.Text('Pupil Left: '), sg.Combo(self.output_list, default_value=self.output_list[5] if len(self.output_list) > 5 else 'None', 
                                             key='pupil_x_channel', enable_events=True),
-             sg.Text(' Right: '), sg.Combo(self.output_list, default_value=self.output_list[6] if len(self.output_list) >= 6 else 'None', 
+             sg.Text(' Right: '), sg.Combo(self.output_list, default_value=self.output_list[6] if len(self.output_list) > 6 else 'None', 
                                             key='pupil_y_channel', enable_events=True)],
             [sg.Button('Switch Left/Right', key='switch', enable_events=True)]
             ])
         self.layout = [
+            [sg.Menu(menu_def)],
             [tabs, graph_col]
         ]
 
+    def update_sliders(self):
+        self.window['left_x_bias'].update(value=self.state.left_cal.x_bias)
+        self.window['left_y_bias'].update(value=self.state.left_cal.y_bias)
+        self.window['left_x_gain'].update(value=int(abs(self.state.left_cal.x_gain)*self.gain_factor))
+        self.window['left_y_gain'].update(value=int(abs(self.state.left_cal.y_gain)*self.gain_factor))
+        self.window['left_flip_x'].update(value=(self.state.left_cal.x_gain < 0))
+        self.window['left_flip_y'].update(value=(self.state.left_cal.y_gain < 0))
+        self.window['left_rotation'].update(value=self.state.left_cal.rotation)
+        self.window['left_dpi'].update(value=(self.state.left_method == 'dpi'))
+        self.window['left_pcr'].update(value=(self.state.left_method == 'pcr'))
+
+        self.window['right_x_bias'].update(value=self.state.right_cal.x_bias)
+        self.window['right_y_bias'].update(value=self.state.right_cal.y_bias)
+        self.window['right_x_gain'].update(value=int(abs(self.state.right_cal.x_gain)*self.gain_factor))
+        self.window['right_y_gain'].update(value=int(abs(self.state.right_cal.y_gain)*self.gain_factor))
+        self.window['right_flip_x'].update(value=(self.state.right_cal.x_gain < 0))
+        self.window['right_flip_y'].update(value=(self.state.right_cal.y_gain < 0))
+        self.window['right_rotation'].update(value=self.state.right_cal.rotation)
+        self.window['right_dpi'].update(value=(self.state.right_method == 'dpi'))
+        self.window['right_pcr'].update(value=(self.state.right_method == 'pcr'))
+
+        self.window['left_pupil_bias'].update(value=self.state.pupil_cal.x_bias)
+        self.window['right_pupil_bias'].update(value=self.state.pupil_cal.y_bias)
+        self.window['left_pupil_gain'].update(value=int(abs(self.state.pupil_cal.x_gain)*self.pupil_factor))
+        self.window['right_pupil_gain'].update(value=int(abs(self.state.pupil_cal.y_gain)*self.pupil_factor))
+
     def update_output_channels(self):
-        left_x = self.state.output_dict[self.window['left_x_channel'].get()] if self.window['left_x_channel'].get() != 'NONE' else AnalogOutput()
-        left_y = self.state.output_dict[self.window['left_y_channel'].get()] if self.window['left_y_channel'].get() != 'NONE' else AnalogOutput()
-        left_pupil = self.state.output_dict[self.window['pupil_x_channel'].get()] if self.window['pupil_x_channel'].get() != 'NONE' else AnalogOutput()
-        right_x = self.state.output_dict[self.window['right_x_channel'].get()] if self.window['right_x_channel'].get() != 'NONE' else AnalogOutput()
-        right_y = self.state.output_dict[self.window['right_y_channel'].get()] if self.window['right_y_channel'].get() != 'NONE' else AnalogOutput()
-        right_pupil = self.state.output_dict[self.window['pupil_y_channel'].get()] if self.window['pupil_y_channel'].get() != 'NONE' else AnalogOutput()
+        left_x = self.state.output_dict[self.window['left_x_channel'].get()] if self.window['left_x_channel'].get() != 'None' else AnalogOutput()
+        left_y = self.state.output_dict[self.window['left_y_channel'].get()] if self.window['left_y_channel'].get() != 'None' else AnalogOutput()
+        left_pupil = self.state.output_dict[self.window['pupil_x_channel'].get()] if self.window['pupil_x_channel'].get() != 'None' else AnalogOutput()
+        right_x = self.state.output_dict[self.window['right_x_channel'].get()] if self.window['right_x_channel'].get() != 'None' else AnalogOutput()
+        right_y = self.state.output_dict[self.window['right_y_channel'].get()] if self.window['right_y_channel'].get() != 'None' else AnalogOutput()
+        right_pupil = self.state.output_dict[self.window['pupil_y_channel'].get()] if self.window['pupil_y_channel'].get() != 'None' else AnalogOutput()
         self.state.left_output = AnalogOutputPair(left_x, left_y)
         self.state.right_output = AnalogOutputPair(right_x, right_y)
         self.state.pupil_output = AnalogOutputPair(left_pupil, right_pupil)
@@ -260,7 +301,7 @@ class GUI:
                 print(event, values)
 
             # handle exit
-            if event == sg.WIN_CLOSED or event == 'Close':
+            if event == sg.WIN_CLOSED or event == 'Close' or event == 'Exit':
                 self.state.is_running = False
                 break
             
@@ -316,6 +357,28 @@ class GUI:
             if event in ['left_x_channel', 'left_y_channel', 'right_x_channel', 'right_y_channel', 'pupil_x_channel', 'pupil_y_channel']:
                 self.update_output_channels()
 
+            # Zero left
+            if event == 'left_zero':
+                last_left = self.state.last_eyes_data.left.cr - \
+                    (self.state.last_eyes_data.left.pupil if self.state.left_method == 'pcr' else self.state.last_eyes_data.left.p4)
+                print(last_left)
+                self.state.left_cal.x_bias = -last_left.x
+                self.state.left_cal.y_bias = -last_left.y
+                print(self.state.left_cal.x_bias, self.state.left_cal.y_bias)
+                print(self.state.left_cal.transform(last_left))
+                self.window['left_x_bias'].update(value=-last_left.x)
+                self.window['left_y_bias'].update(value=-last_left.y)
+            
+            
+            # Zero right
+            if event == 'right_zero':
+                last_right = self.state.last_eyes_data.right.cr - \
+                    (self.state.last_eyes_data.right.pupil if self.state.right_method == 'pcr' else self.state.last_eyes_data.right.p4)
+                self.state.right_cal.x_bias = -last_right.x
+                self.state.right_cal.y_bias = -last_right.y
+                self.window['right_x_bias'].update(value=-last_right.x)
+                self.window['right_y_bias'].update(value=-last_right.y)
+
             # Switch left and right
             if event == 'switch':
                 temp = self.state.left_output
@@ -329,6 +392,19 @@ class GUI:
                 temp = self.window['right_y_channel'].get()
                 self.window['right_y_channel'].update(value=self.window['left_y_channel'].get())
                 self.window['left_y_channel'].update(value=temp)
+
+            # Save config
+            if event == 'Save Config':
+                # Open a dialog to select a new file
+                save_dir = sg.popup_get_folder('Select save directory', default_path=self.state.save_dir)
+                self.state.save(Path(save_dir))
+
+            # Load config
+            if event == 'Load Config':
+                # Open a folder picking dialog
+                save_dir = sg.popup_get_folder('Select directory to load', default_path=self.state.save_dir)
+                self.state.load(Path(save_dir))
+                self.update_sliders()
 
             # update graph and errors on timeout (refresh)
             if event == sg.TIMEOUT_EVENT:

@@ -17,19 +17,19 @@ class Point:
         return self._d[1]
     
     def __sub__(self, other):
-        self._d -= other._d
-        return self
+        return Point(self.x - other.x, self.y - other.y)
     
     def __add__(self, other):
-        self._d += other._d
-        return self
+        return Point(self.x + other.x, self.y + other.y)
 
     def __mul__(self, other):
         if isinstance(other, Point):
-            self._d *= other._d
+            return Point(self.x * other.x, self.y * other.y)
         else:
-            self._d *= other 
-        return self
+            return Point(self.x * other, self.y * other)
+    
+    def copy(self):
+        return Point(self.x, self.y)
 
     def clip(self, minimum, maximum):
         np.clip(self._d, minimum, maximum, out=self._d)
