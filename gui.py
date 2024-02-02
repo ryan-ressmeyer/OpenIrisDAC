@@ -397,14 +397,16 @@ class GUI:
             if event == 'Save Config':
                 # Open a dialog to select a new file
                 save_dir = sg.popup_get_folder('Select save directory', default_path=self.state.save_dir)
-                self.state.save(Path(save_dir))
+                if save_dir: 
+                    self.state.save(Path(save_dir))
 
             # Load config
             if event == 'Load Config':
                 # Open a folder picking dialog
-                save_dir = sg.popup_get_folder('Select directory to load', default_path=self.state.save_dir)
-                self.state.load(Path(save_dir))
-                self.update_sliders()
+                load_dir = sg.popup_get_folder('Select directory to load', default_path=self.state.save_dir)
+                if load_dir:
+                    self.state.load(Path(load_dir))
+                    self.update_sliders()
 
             # update graph and errors on timeout (refresh)
             if event == sg.TIMEOUT_EVENT:
