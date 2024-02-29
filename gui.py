@@ -397,8 +397,7 @@ class GUI:
             if event == 'Save Config':
                 # Open a dialog to select a new file
                 save_dir = sg.popup_get_folder('Select save directory', default_path=self.state.save_dir)
-                if save_dir:
-                    self.state.save(Path(save_dir))
+                self.state.save(Path(save_dir))
 
             # Load config
             if event == 'Load Config':
