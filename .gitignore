@@ -1,3 +1,6 @@
 APCI/
 __pycache__/
 cals/**
+build
+dist
+*.spec

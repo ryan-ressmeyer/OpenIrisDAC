@@ -7,6 +7,7 @@ Consult https://accesio.com/MANUALS/USB%20Software%20Reference%20Manual.html for
 """
 from typing import *
 from ctypes import *
+
 AIOUSB = cdll.LoadLibrary(
     "C:\\Windows\\System32\\AIOUSB.dll")
 
