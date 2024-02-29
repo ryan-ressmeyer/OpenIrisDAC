@@ -14,3 +14,6 @@ Requirements:
 * pysimplegui
 * nidaqmx-python
 * pyinstaller
+
+To generate .exe folder:
+pyinstaller gui.py -n OpenIrisDAC
