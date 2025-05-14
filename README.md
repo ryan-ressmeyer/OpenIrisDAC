@@ -16,4 +16,4 @@ Requirements:
 * pyinstaller
 
 To generate .exe folder:
-pyinstaller gui.py -n OpenIrisDAC
+pyinstaller -D gui.py -n OpenIrisDAC

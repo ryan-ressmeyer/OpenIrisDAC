@@ -104,7 +104,8 @@ class EyesData:
         if struct:
             self.left = EyeData(struct['Left'])
             self.right = EyeData(struct['Right'])
-            self.extra = ExtraData(struct['Extra'])
+            if 'Extra' in struct: # Extra was added in OpenIrisDPI 1.4
+                self.extra = ExtraData(struct['Extra'])
             self.error = ''
         else:
             self.left = EyeData()
