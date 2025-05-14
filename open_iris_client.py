@@ -81,6 +81,20 @@ class EyeData:
     def __repr__(self):
         return f"EyeData({self.frame_number}, Pupil={self.pupil}, Pupil Area={self.pupil_area}, CR={self.cr}, P4={self.p4})"
 
+class ExtraData:
+    def __init__(self, struct:dict = {}):
+        try:
+            self.ints = [struct[f'Int{i}'] for i in range(0, 9)]
+            self.doubles = [struct[f'Double{i}'] for i in range(0, 9)]
+            self.error = False
+        except:
+            self.ints = [0] * 9
+            self.doubles = [0.0] * 9
+            self.error = True
+            
+    def __repr__(self):
+        return f"ExtraData(Ints={self.ints}, Doubles={self.doubles})"
+
 @dataclass
 class EyesData:
     left: EyeData
@@ -90,14 +104,16 @@ class EyesData:
         if struct:
             self.left = EyeData(struct['Left'])
             self.right = EyeData(struct['Right'])
+            self.extra = ExtraData(struct['Extra'])
             self.error = ''
         else:
             self.left = EyeData()
             self.right = EyeData()
+            self.extra = ExtraData()
             self.error = 'No Data'
     
     def __repr__(self):
-        return f"EyesData\n\tLeft: {repr(self.left)}\n\tRight: {repr(self.right)}"
+        return f"EyesData\n\tLeft: {repr(self.left)}\n\tRight: {repr(self.right)}\n\tExtra: {self.extra}"
     
     def get_error(self, left_p4:bool=True, right_p4:bool=True) -> str:
         if self.error:

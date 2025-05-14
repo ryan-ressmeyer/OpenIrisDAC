@@ -85,7 +85,7 @@ class GlobalState:
         self.right_method = 'dpi'
         self.right_output = AnalogOutputPair()
 
-        self.pupil_cal = CalibrationParameters(0,0,0.01,0.01,0)
+        self.pupil_cal = CalibrationParameters(0,0,3e-5,3e-5,0)
         self.pupil_output = AnalogOutputPair()
 
         self.last_eyes_data = EyesData()
@@ -150,12 +150,92 @@ class GlobalState:
             self.left_method = 'dpi'
             self.right_method = 'dpi'
 
+from typing import Callable
+class GUIField:
+    def __init__(self, title:str, key:str, size:tuple, obj:object, field:str, gain_factor:float=1, increment:float=1, multiplicative:bool=False,
+                slider_enabled:bool=False, slider_minimum:float=-100, slider_maximum:float=100, slider_resolution:float=1, 
+                flip_enabled:bool=False):
+        self.title = title
+        self.key = key
+        self.size = size
+        self.object = obj
+        self.field = field
+        self.default_value = getattr(obj, field) / gain_factor
+        self.setter = lambda x: setattr(obj, field, x)
+        self.getter = lambda : getattr(obj, field)
+        self.gain_factor = gain_factor
+        self.increment = increment
+        self.multiplicative = multiplicative
+        self.slider_enabled = slider_enabled
+        self.slider_minimum = slider_minimum
+        self.slider_maximum = slider_maximum
+        self.slider_resolution = slider_resolution
+        self.flip_enabled = flip_enabled
+        if self.flip_enabled:
+            self.flip_default = self.default_value < 0
+            self.default_value = abs(self.default_value)
+
+    def get_layout(self):
+        layout = []
+        layout.append([sg.Text(self.title)] + ([sg.Checkbox('Flip', key=self.key+'_flip', default=self.flip_default, enable_events=True)] if self.flip_enabled else []))
+        layout.append([
+                        sg.Button('<', key=self.key+'_dec', enable_events=True, s=(2, self.size[1])), 
+                        sg.InputText(default_text=self.default_value, s=(self.size[0], self.size[1]), key=self.key+'_input', enable_events=True),
+                        sg.Button('>', key=self.key+'_inc', enable_events=True, s=(2, self.size[1]))
+                    ])
+        if self.slider_enabled:
+            layout.append([sg.Slider((self.slider_minimum, self.slider_maximum), orientation='h', s=(self.size[0]-1, 15), disable_number_display=True,
+                        default_value=self.default_value, resolution=self.slider_resolution, key=self.key+'_slider', enable_events=True)])
+        layout.append([sg.HSeparator()])
+
+        return sg.Column(layout)
+    
+    def sync_state(self, window):
+        state = self.getter()
+        if self.flip_enabled:
+            sign = state < 0
+            window[self.key+'_flip'].update(value=sign)
+            state = abs(state)
+        
+        old_input = window[self.key+'_input'].get()
+        new_input = str(state/self.gain_factor)
+        if old_input != new_input:
+            window[self.key+'_input'].update(value=f'{state/self.gain_factor:g}')
+        if self.slider_enabled:
+            old_slider = window[self.key+'_slider'].widget.get()
+            new_slider = state/self.gain_factor
+            if old_slider != new_slider:
+                window[self.key+'_slider'].update(value=state/self.gain_factor)
+        
+    def update(self, window, event:str, values:dict):
+        if self.key in event:
+            flip = (1 - values[self.key+'_flip'] * 2) if self.flip_enabled else 1
+            if event == self.key+'_input':
+                try:
+                    self.setter(float(values[event]) * self.gain_factor * flip)
+                except:
+                    pass
+            if event == self.key+'_inc':
+                if self.multiplicative:
+                    self.setter(self.getter() * (1+self.increment))
+                else:
+                    self.setter(self.getter() + self.increment * self.gain_factor * flip)
+            if event == self.key+'_dec':
+                if self.multiplicative:
+                    self.setter(self.getter() * (1-self.increment))
+                else:
+                    self.setter(self.getter() - self.increment * self.gain_factor * flip)
+            if event == self.key+'_slider':
+                self.setter(values[event] * self.gain_factor * flip)
+            if event == self.key+'_flip':
+                self.setter(self.getter() * -1)
+            self.sync_state(window)
+
 class GUI:
     def __init__(self, state:GlobalState) -> None:
         self.state = state
 
         menu_def = [['File', ['Save Config', 'Load Config', 'Exit']]]
-
 
         def make_column(title, key, size, resolution, default_value, minimum, maximum, append=[]):
             return sg.Column([
@@ -164,51 +244,136 @@ class GUI:
                 append
                 ])
         
-        self.gain_factor = 2000
-        self.pupil_factor = 10000
-        col_size = (30,20)
-        lc1 = make_column('X Bias', 'left_x_bias', col_size, 1, self.state.left_cal.x_bias, -300, 300)
-        lc2 = make_column('Y Bias', 'left_y_bias', col_size, 1, self.state.left_cal.y_bias, -300, 300)
-        lc3 = make_column('X Gain', 'left_x_gain', col_size, 1, int(abs(self.state.left_cal.x_gain)*self.gain_factor), 0, 300,
-                          [sg.Checkbox('Flip', key='left_flip_x', default=(self.state.left_cal.x_gain < 0), enable_events=True)])
-        lc4 = make_column('Y Gain', 'left_y_gain', col_size, 1, int(abs(self.state.left_cal.y_gain)*self.gain_factor), 0, 300,
-                          [sg.Checkbox('Flip', key='left_flip_y', default=(self.state.left_cal.y_gain < 0), enable_events=True)])
-        lc5 = make_column('Rotation', 'left_rotation', col_size, 1, self.state.left_cal.rotation, -180, 180)
-        l = sg.Column([
-            [lc1, lc2, lc3, lc4, lc5], 
-            [sg.Text('Method: '), 
-             sg.Radio('DPI (P1-P4)', 'left_method', key='left_dpi', default=self.state.left_method=='dpi', enable_events=True), 
-             sg.Radio('PCR (P1-Pupil)', 'left_method', key='left_pcr', default=self.state.left_method=='pcr', enable_events=True)
-             ]
-        ])
-        lt = sg.Tab('Left Eye', [[l]])
+        field_size = (40,1)
+        self.bias_factor = 5e0
+        self.gain_factor = 1.3e-4
+        b_min = -100
+        b_max = 100
+        b_res = .2
+        g_min = 0
+        g_max = 500
+        g_res = .5
+        self.lbx = GUIField(
+            'X Bias', 'left_x_bias', field_size,
+            self.state.left_cal, 'x_bias', gain_factor=self.bias_factor,
+            increment=.5, multiplicative=False,
+            slider_enabled=True, slider_minimum=b_min, slider_maximum=b_max, slider_resolution=b_res
+            )
+        self.lby = GUIField(
+            'Y Bias', 'left_y_bias', field_size,
+            self.state.left_cal, 'y_bias', gain_factor=self.bias_factor,
+            increment=.5, multiplicative=False,
+            slider_enabled=True, slider_minimum=b_min, slider_maximum=b_max, slider_resolution=b_res
+            )
+        self.lgx = GUIField(
+            'X Gain', 'left_x_gain', field_size,
+            self.state.left_cal, 'x_gain', gain_factor=self.gain_factor,
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
+        self.lgy = GUIField(
+            'Y Gain', 'left_y_gain', field_size,
+            self.state.left_cal, 'y_gain', gain_factor=self.gain_factor,
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
+        self.lr = GUIField(
+            'Rotation', 'left_rotation', field_size,
+            self.state.left_cal, 'rotation', gain_factor=1,
+            increment=1, multiplicative=False,
+            slider_enabled=True, slider_minimum=-180, slider_maximum=180, slider_resolution=1
+            )
+        lt = sg.Tab('Left Eye', [
+            [self.lbx.get_layout()],
+            [self.lby.get_layout()],
+            [self.lgx.get_layout()],
+            [self.lgy.get_layout()],
+            [self.lr.get_layout()],
+            [sg.VPush()],
+            [sg.Text('Method: '),
+                sg.Radio('DPI (P1-P4)', 'left_method', key='left_dpi', default=self.state.left_method=='dpi', enable_events=True), 
+                sg.Radio('PCR (P1-Pupil)', 'left_method', key='left_pcr', default=self.state.left_method=='pcr', enable_events=True)
+            ]])
+        
+        self.rbx = GUIField(
+            'X Bias', 'right_x_bias', field_size,
+            self.state.right_cal, 'x_bias', gain_factor=self.bias_factor,
+            increment=1, multiplicative=False,
+            slider_enabled=True, slider_minimum=b_min, slider_maximum=b_max, slider_resolution=b_res
+            )
+        self.rby = GUIField(
+            'Y Bias', 'right_y_bias', field_size,
+            self.state.right_cal, 'y_bias', gain_factor=self.bias_factor,
+            increment=1, multiplicative=False,
+            slider_enabled=True, slider_minimum=b_min, slider_maximum=b_max, slider_resolution=b_res
+            )
+        self.rgx = GUIField(
+            'X Gain', 'right_x_gain', field_size,
+            self.state.right_cal, 'x_gain', gain_factor=self.gain_factor,
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
+        self.rgy = GUIField(
+            'Y Gain', 'right_y_gain', field_size,
+            self.state.right_cal, 'y_gain', gain_factor=self.gain_factor,
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
+        self.rr = GUIField(
+            'Rotation', 'right_rotation', field_size,
+            self.state.right_cal, 'rotation', gain_factor=1,
+            increment=1, multiplicative=False,
+            slider_enabled=True, slider_minimum=-180, slider_maximum=180, slider_resolution=1
+            )
+        rt = sg.Tab('Right Eye', [
+            [self.rbx.get_layout()],
+            [self.rby.get_layout()],
+            [self.rgx.get_layout()],
+            [self.rgy.get_layout()],
+            [self.rr.get_layout()],
+            [sg.VPush()],
+            [sg.Text('Method: '),
+                sg.Radio('DPI (P1-P4)', 'right_method', key='right_dpi', default=self.state.right_method=='dpi', enable_events=True), 
+                sg.Radio('PCR (P1-Pupil)', 'right_method', key='right_pcr', default=self.state.right_method=='pcr', enable_events=True)
+            ]])
+        
+        
+        self.pupil_bias_factor = 3e3
+        self.pupil_gain_factor = 3e-7
+        self.plb = GUIField(
+            'Left Pupil Bias', 'left_pupil_bias', field_size, 
+            self.state.pupil_cal, 'x_bias', gain_factor=self.pupil_bias_factor, 
+            increment=1, multiplicative=False
+            )
+        self.prb = GUIField(
+            'Right Pupil Bias', 'right_pupil_bias', field_size, 
+            self.state.pupil_cal, 'y_bias', gain_factor=self.pupil_bias_factor,
+            increment=1, multiplicative=False
+            )
+        self.plg = GUIField(
+            'Left Pupil Gain', 'left_pupil_gain', field_size, 
+            self.state.pupil_cal, 'x_gain', gain_factor=self.pupil_gain_factor, 
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
+        self.prg = GUIField(
+            'Right Pupil Gain', 'right_pupil_gain', field_size, 
+            self.state.pupil_cal, 'y_gain', gain_factor=self.pupil_gain_factor,
+            increment=0.05, multiplicative=True, flip_enabled=True,
+            slider_enabled=True, slider_minimum=g_min, slider_maximum=g_max, slider_resolution=g_res
+            )
 
-        rc1 = make_column('X Bias', 'right_x_bias', col_size, 1, self.state.right_cal.x_bias, -300, 300)
-        rc2 = make_column('Y Bias', 'right_y_bias', col_size, 1, self.state.right_cal.y_bias, -300, 300)
-        rc3 = make_column('X Gain', 'right_x_gain', col_size, 1, int(abs(self.state.right_cal.x_gain)*self.gain_factor), 0, 300,
-                          [sg.Checkbox('Flip', key='right_flip_x', default=(self.state.right_cal.x_gain < 0), enable_events=True)])
-        rc4 = make_column('Y Gain', 'right_y_gain', col_size, 1, int(abs(self.state.right_cal.y_gain)*self.gain_factor), 0, 300, 
-                          [sg.Checkbox('Flip', key='right_flip_y', default=(self.state.right_cal.y_gain < 0), enable_events=True)])
-        rc5 = make_column('Rotation', 'right_rotation', col_size, 1, self.state.right_cal.rotation, -180, 180)
-        r = sg.Column([
-            [rc1, rc2, rc3, rc4, rc5], 
-            [sg.Text('Method: '), 
-             sg.Radio('DPI (P1-P4)', 'right_method', key='right_dpi', default=self.state.right_method=='dpi', enable_events=True), 
-             sg.Radio('PCR (P1-Pupil)', 'right_method', key='right_pcr', default=self.state.right_method=='pcr', enable_events=True)
-             ]
-        ])
-        rt = sg.Tab('Right Eye', [[r]])
-
-        pc1 = make_column('Left Bias', 'left_pupil_bias', (30, 20), 100, self.state.pupil_cal.x_bias, -30000, 30000)
-        pc2 = make_column('Right Bias', 'right_pupil_bias', (30, 20), 100, self.state.pupil_cal.y_bias, -30000, 30000)
-        pc3 = make_column('Left Gain', 'left_pupil_gain', (30, 20), 1, int(abs(self.state.pupil_cal.x_gain)*self.pupil_factor), 0, 300)
-        pc4 = make_column('Right Gain', 'right_pupil_gain', (30, 20), 1, int(abs(self.state.pupil_cal.y_gain)*self.pupil_factor), 0, 300)
-        pt = sg.Tab('Pupil', [[pc1, pc2, pc3, pc4]])
+        pt = sg.Tab('Pupil', [
+            [self.plb.get_layout()],
+            [self.prb.get_layout()],
+            [self.plg.get_layout()],
+            [self.prg.get_layout()],
+            [sg.VPush()],
+            ])
         
-        tabs = sg.TabGroup([[lt, rt, pt]], key='tabs')
+        tabs = sg.TabGroup([[lt, rt, pt]], key='tabs', expand_y=True)
         
-        self.graph = sg.Graph(canvas_size=(400,400), graph_bottom_left=(-5,-5), graph_top_right=(5,5), background_color='grey', key='graph')
-        
+        self.graph = sg.Graph(canvas_size=(400,400), graph_bottom_left=(-5.1,-5.1), graph_top_right=(5.1,5.1), background_color='grey', key='graph')
 
         self.output_list = list(self.state.output_dict.keys())
         self.output_list.insert(0, 'None')
@@ -239,30 +404,20 @@ class GUI:
         ]
 
     def update_sliders(self):
-        self.window['left_x_bias'].update(value=self.state.left_cal.x_bias)
-        self.window['left_y_bias'].update(value=self.state.left_cal.y_bias)
-        self.window['left_x_gain'].update(value=int(abs(self.state.left_cal.x_gain)*self.gain_factor))
-        self.window['left_y_gain'].update(value=int(abs(self.state.left_cal.y_gain)*self.gain_factor))
-        self.window['left_flip_x'].update(value=(self.state.left_cal.x_gain < 0))
-        self.window['left_flip_y'].update(value=(self.state.left_cal.y_gain < 0))
-        self.window['left_rotation'].update(value=self.state.left_cal.rotation)
-        self.window['left_dpi'].update(value=(self.state.left_method == 'dpi'))
-        self.window['left_pcr'].update(value=(self.state.left_method == 'pcr'))
-
-        self.window['right_x_bias'].update(value=self.state.right_cal.x_bias)
-        self.window['right_y_bias'].update(value=self.state.right_cal.y_bias)
-        self.window['right_x_gain'].update(value=int(abs(self.state.right_cal.x_gain)*self.gain_factor))
-        self.window['right_y_gain'].update(value=int(abs(self.state.right_cal.y_gain)*self.gain_factor))
-        self.window['right_flip_x'].update(value=(self.state.right_cal.x_gain < 0))
-        self.window['right_flip_y'].update(value=(self.state.right_cal.y_gain < 0))
-        self.window['right_rotation'].update(value=self.state.right_cal.rotation)
-        self.window['right_dpi'].update(value=(self.state.right_method == 'dpi'))
-        self.window['right_pcr'].update(value=(self.state.right_method == 'pcr'))
-
-        self.window['left_pupil_bias'].update(value=self.state.pupil_cal.x_bias)
-        self.window['right_pupil_bias'].update(value=self.state.pupil_cal.y_bias)
-        self.window['left_pupil_gain'].update(value=int(abs(self.state.pupil_cal.x_gain)*self.pupil_factor))
-        self.window['right_pupil_gain'].update(value=int(abs(self.state.pupil_cal.y_gain)*self.pupil_factor))
+        self.lbx.sync_state(self.window)
+        self.lby.sync_state(self.window)
+        self.lgx.sync_state(self.window)
+        self.lgy.sync_state(self.window)
+        self.lr.sync_state(self.window)
+        self.rbx.sync_state(self.window)
+        self.rby.sync_state(self.window)
+        self.rgx.sync_state(self.window)
+        self.rgy.sync_state(self.window)
+        self.rr.sync_state(self.window)
+        self.plb.sync_state(self.window)
+        self.prb.sync_state(self.window)
+        self.plg.sync_state(self.window)
+        self.prg.sync_state(self.window)
 
     def update_output_channels(self):
         left_x = self.state.output_dict[self.window['left_x_channel'].get()] if self.window['left_x_channel'].get() != 'None' else AnalogOutput()
@@ -280,13 +435,34 @@ class GUI:
         # draw axes
         self.graph.draw_line((-5,0), (5,0))
         self.graph.draw_line((0,-5), (0,5))
+        self.graph.draw_line((-5,-5), (-5,5))
+        self.graph.draw_line((-5,5), (5,5))
+        self.graph.draw_line((5,5),(5,-5))
+        self.graph.draw_line((5,-5),(-5,-5))
+        self.graph.draw_text('5V', (0.3,4.7), color='black')
+        self.graph.draw_text('5V', (4.7,0.3), color='black')
+        self.graph.draw_text('-5V', (-0.4,-4.7), color='black')
+        self.graph.draw_text('-5V', (-4.6,-0.3), color='black')
+        
         for xy in range(-5, 6):
             self.graph.draw_line((xy,-0.1), (xy,0.1))
             self.graph.draw_line((-0.1,xy), (0.1,xy))
-
-        self.graph.draw_point((self.state.right_output.v_out.x, self.state.right_output.v_out.y), size=.15, color='firebrick1')
-        self.graph.draw_point((self.state.left_output.v_out.x, self.state.left_output.v_out.y), size=.15, color='DodgerBlue')
-        self.graph.draw_point((self.state.pupil_output.v_out.x, self.state.pupil_output.v_out.y), size=.15, color='DarkGoldenrod1')
+        
+        clip = lambda x: min(max(x, -5), 5)
+        rx = clip(self.state.right_output.v_out.x)
+        ry = clip(self.state.right_output.v_out.y)
+        lx = clip(self.state.left_output.v_out.x) 
+        ly = clip(self.state.left_output.v_out.y)
+        px = clip(self.state.pupil_output.v_out.x) 
+        py = clip(self.state.pupil_output.v_out.y)
+        self.graph.draw_point((rx, ry), size=.15, color='firebrick1')
+        self.graph.draw_point((lx, ly), size=.15, color='DodgerBlue')
+        self.graph.draw_point((px, py), size=.15, color='DarkGoldenrod1')
+        
+        int0 = self.state.last_eyes_data.extra.ints[0] & 1
+        int1 = self.state.last_eyes_data.extra.ints[1] & 1
+        self.graph.draw_point((4.3, -4.7), size=.30, color='spring green' if int0 else 'red')
+        self.graph.draw_point((4.7, -4.7), size=.30, color='spring green' if int1 else 'red')
 
     def window_loop(self, verbose=False):
         
@@ -294,10 +470,12 @@ class GUI:
         first = True
         while self.state.is_running:
             event, values = self.window.read(timeout=20) # 20ms = 50Hz
+            # if event != '__TIMEOUT__':
+            #     print(event, values)
             if first:
                 self.update_output_channels()
                 first = False
-            if verbose:
+            if verbose and event != sg.TIMEOUT_EVENT:
                 print(event, values)
 
             # handle exit
@@ -324,34 +502,20 @@ class GUI:
                     self.state.right_method = 'dpi'
 
             # Update states
-            if event == 'left_x_bias':
-                self.state.left_cal.x_bias = values[event]
-            if event == 'left_y_bias':
-                self.state.left_cal.y_bias = values[event]
-            if event == 'left_x_gain' or event == 'left_flip_x':
-                self.state.left_cal.x_gain = values['left_x_gain']/self.gain_factor * (-1 if values['left_flip_x'] else 1)
-            if event == 'left_y_gain' or event == 'left_flip_y':
-                self.state.left_cal.y_gain = values['left_y_gain']/self.gain_factor * (-1 if values['left_flip_y'] else 1)
-            if event == 'left_rotation':
-                self.state.left_cal.rotation = values[event]
-            if event == 'right_x_bias':
-                self.state.right_cal.x_bias = values[event]
-            if event == 'right_y_bias':
-                self.state.right_cal.y_bias = values[event]
-            if event == 'right_x_gain' or event == 'right_flip_x':
-                self.state.right_cal.x_gain = values['right_x_gain']/self.gain_factor * (-1 if values['right_flip_x'] else 1)
-            if event == 'right_y_gain' or event == 'right_flip_y':
-                self.state.right_cal.y_gain = values['right_y_gain']/self.gain_factor * (-1 if values['right_flip_y'] else 1)
-            if event == 'right_rotation':
-                self.state.right_cal.rotation = values[event]
-            if event == 'left_pupil_bias':
-                self.state.pupil_cal.x_bias = values[event]
-            if event == 'right_pupil_bias':
-                self.state.pupil_cal.y_bias = values[event]
-            if event == 'left_pupil_gain':
-                self.state.pupil_cal.x_gain = values[event]/self.pupil_factor
-            if event == 'right_pupil_gain':
-                self.state.pupil_cal.y_gain = values[event]/self.pupil_factor
+            self.rbx.update(self.window, event, values)
+            self.rby.update(self.window, event, values)
+            self.rgx.update(self.window, event, values)
+            self.rgy.update(self.window, event, values)
+            self.rr.update(self.window, event, values)
+            self.lbx.update(self.window, event, values)
+            self.lby.update(self.window, event, values)
+            self.lgx.update(self.window, event, values)
+            self.lgy.update(self.window, event, values)
+            self.lr.update(self.window, event, values)
+            self.plb.update(self.window, event, values)
+            self.prb.update(self.window, event, values)
+            self.plg.update(self.window, event, values)
+            self.prg.update(self.window, event, values)
 
             # Update output channels
             if event in ['left_x_channel', 'left_y_channel', 'right_x_channel', 'right_y_channel', 'pupil_x_channel', 'pupil_y_channel']:
@@ -366,8 +530,8 @@ class GUI:
                 self.state.left_cal.y_bias = -last_left.y
                 print(self.state.left_cal.x_bias, self.state.left_cal.y_bias)
                 print(self.state.left_cal.transform(last_left))
-                self.window['left_x_bias'].update(value=-last_left.x)
-                self.window['left_y_bias'].update(value=-last_left.y)
+                self.lbx.sync_state(self.window)
+                self.lby.sync_state(self.window)
             
             
             # Zero right
@@ -376,8 +540,8 @@ class GUI:
                     (self.state.last_eyes_data.right.pupil if self.state.right_method == 'pcr' else self.state.last_eyes_data.right.p4)
                 self.state.right_cal.x_bias = -last_right.x
                 self.state.right_cal.y_bias = -last_right.y
-                self.window['right_x_bias'].update(value=-last_right.x)
-                self.window['right_y_bias'].update(value=-last_right.y)
+                self.rbx.sync_state(self.window)
+                self.rby.sync_state(self.window)
 
             # Switch left and right
             if event == 'switch':
