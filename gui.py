@@ -461,8 +461,8 @@ class GUI:
         
         int0 = self.state.last_eyes_data.extra.ints[0] & 1
         int1 = self.state.last_eyes_data.extra.ints[1] & 1
-        self.graph.draw_point((4.3, -4.7), size=.30, color='spring green' if int0 else 'red')
-        self.graph.draw_point((4.7, -4.7), size=.30, color='spring green' if int1 else 'red')
+        self.graph.draw_point((4.3, -4.7), size=.30, color='green' if int0 else 'red')
+        self.graph.draw_point((4.7, -4.7), size=.30, color='green' if int1 else 'red')
 
     def window_loop(self, verbose=False):
         
