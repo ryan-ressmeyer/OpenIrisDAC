@@ -84,8 +84,12 @@ class EyeData:
 class ExtraData:
     def __init__(self, struct:dict = {}):
         try:
-            self.ints = [struct[f'Int{i}'] for i in range(0, 9)]
-            self.doubles = [struct[f'Double{i}'] for i in range(0, 9)]
+            if struct: 
+                self.ints = [struct[f'Int{i}'] for i in range(0, 9)]
+                self.doubles = [struct[f'Double{i}'] for i in range(0, 9)]
+            else:
+                self.ints = [0] * 9
+                self.doubles = [0.0] * 9
             self.error = False
         except:
             self.ints = [0] * 9
@@ -106,6 +110,8 @@ class EyesData:
             self.right = EyeData(struct['Right'])
             if 'Extra' in struct: # Extra was added in OpenIrisDPI 1.4
                 self.extra = ExtraData(struct['Extra'])
+            else:
+                self.extra = ExtraData()
             self.error = ''
         else:
             self.left = EyeData()
